@@ -10,7 +10,7 @@ def hard_sigmoid(x):
 
 
 class L0Norm(nn.Module):
-    def __init__(self, origin_shape, alpha_init=5, l=-1.5, r=1.5):
+    def __init__(self, origin_shape, alpha_init, l, r):
         """
         Base class of layers using L0 Norm
         :param origin: original layer such as nn.Linear(..), nn.Conv2d(..)
@@ -23,7 +23,6 @@ class L0Norm(nn.Module):
         """
         super(L0Norm, self).__init__()
         self._size = origin_shape
-        print(self._size)
         self.alpha = nn.Parameter(torch.zeros(self._size) + alpha_init)
         self.register_buffer("uniform", torch.zeros(self._size))
         self.l = l
@@ -40,15 +39,14 @@ class L0Norm(nn.Module):
         else:
             s = F.sigmoid(self.alpha) * (self.r - self.l) + self.l
             penalty = torch.tensor(0)
-            print(hard_sigmoid(s))
         return hard_sigmoid(s), penalty
 
 
 class DiffPruningTransformer(torch.nn.Module):
-    def __init__(self, parent_model, device):
-        super(ParamXLM, self).__init__()
+    def __init__(self, parent_model, device, alpha_init=5, l=-1.5, r=1.5):
+        super(DiffPruningTransformer, self).__init__()
         self.lm = ReparamModule(parent_model.base_model)
-        self.add_module("l0_norm", L0Norm(self.lm.flat_param.shape))
+        self.add_module("l0_norm", L0Norm(self.lm.flat_param.shape, alpha_init, l, r))
         self.patch_weight = torch.zeros_like(self.lm.flat_param)
         self.patch_weight.requires_grad = True
         self.patch_weight = torch.nn.Parameter(self.patch_weight)
@@ -85,9 +83,8 @@ class DiffPruningTransformer(torch.nn.Module):
             flat_param=flat_params,
         )
         sequence_output = outputs[0]
-
         outputs = outputs[:1] + (penalty,) + outputs[1:]
-        return sequence_output
+        return outputs
 
     def save_pretrained(self, path):
         torch.save(self.state_dict(), path)
